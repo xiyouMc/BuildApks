@@ -1,0 +1,83 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.3"
+    defaultConfig {
+        applicationId "com.github.xiyoumc"
+        minSdkVersion 15
+        targetSdkVersion 25
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+    signingConfigs {
+        release {
+            keyAlias 'xiyoumc'
+            keyPassword 'xiyoumc'
+            storeFile file('mc_key')
+            storePassword 'xiyoumc'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    productFlavors{
+        YingYongBao{
+            manifestPlaceholders = [UMENG_CHANNEL:"YingYongBao"]
+        }
+        "360"{
+            manifestPlaceholders = [UMENG_CHANNEL:"360"]
+        }
+        "Google Play"{
+            manifestPlaceholders = [UMENG_CHANNEL:"123123123123"]
+        }
+    }
+    afterEvaluate {
+        android.applicationVariants.all { variant ->
+            def rootDir = project.rootDir
+            def androidJarPath
+            def localProperties = new File(rootDir, "local.properties")
+            if (localProperties.exists()) {
+                Properties properties = new Properties()
+                localProperties.withInputStream { instr ->
+                    properties.load(instr)
+                }
+                def sdkDir = properties.getProperty('sdk.dir')
+                androidJarPath = sdkDir + "/build-tools/" + android.buildToolsVersion + "/zipalign"
+                print androidJarPath + "\n"
+            }
+            def output = variant.outputs.get(0).outputFile as File
+            if ("release".equals(variant.name) && variant.signingConfig != null) {
+                def task = tasks.findByName("zipalign${variant.name.capitalize()}")
+                def zipalignExe = task?.zipAlignExe
+                def repackageTask = tasks.create(name: "releaseAllChannels",
+                        description: "Build all channel apks",
+                        group: "build", type: Exec) {
+                    commandLine 'python', rootProject.file("repackage.py").absolutePath,
+                            '-f', rootProject.file('channels').absolutePath,
+                            '-o', rootProject.file('out').absolutePath,
+                            "--keystore=${variant.signingConfig.storeFile}",
+                            "--keypass=${variant.signingConfig.keyPassword}",
+                            "--storepass=${variant.signingConfig.storePassword}",
+                            "--keyalias=${variant.signingConfig.keyAlias}",
+                            "--zipalignexe=${androidJarPath}",
+                            output.absolutePath
+                }
+                repackageTask.dependsOn variant.assemble
+            }
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+        exclude group: 'com.android.support', module: 'support-annotations'
+    })
+    compile 'com.android.support:appcompat-v7:25.3.1'
+    testCompile 'junit:junit:4.12'
+}
